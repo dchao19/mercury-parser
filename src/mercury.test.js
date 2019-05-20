@@ -1,8 +1,9 @@
 import assert from 'assert';
-import { Errors } from 'utils';
 
 import { record } from 'test-helpers';
 import Mercury from './mercury';
+
+const fs = require('fs');
 
 describe('Mercury', () => {
   const recorder = record('mercury-test');
@@ -13,13 +14,13 @@ describe('Mercury', () => {
     it('returns an error if a malformed url is passed', async () => {
       const error = await Mercury.parse('foo.com');
 
-      assert.equal(error, Errors.badUrl);
+      assert(/does not look like a valid URL/i.test(error.message));
     });
 
     it('returns an error if a bad url is passed', async () => {
       const error = await Mercury.parse('foo.com');
 
-      assert.equal(error, Errors.badUrl);
+      assert(/does not look like a valid URL/i.test(error.message));
     });
 
     it('does the whole thing', async () => {
@@ -31,20 +32,20 @@ describe('Mercury', () => {
       assert.equal(result.content.indexOf('score="') === -1, true);
     });
 
-    it('does blogger', async () => {
-      const result = await Mercury.parse(
-        'https://googleblog.blogspot.com/2016/08/onhub-turns-one-today.html'
+    it('returns an error on non-200 responses', async () => {
+      const error = await Mercury.parse(
+        'https://www.thekitchn.com/instant-pot-chicken-pesto-pasta-eating-instantly-267141'
       );
 
-      assert.equal(typeof result, 'object');
+      assert(/instructed to reject non-200/i.test(error.message));
     });
 
-    it('does blogger', async () => {
-      const result = await Mercury.parse(
-        'https://googleblog.blogspot.com/2016/08/onhub-turns-one-today.html'
+    it('returns an error on invalid content types', async () => {
+      const error = await Mercury.parse(
+        'https://upload.wikimedia.org/wikipedia/commons/5/52/Spacer.gif'
       );
 
-      assert.equal(typeof result, 'object');
+      assert(/content-type for this resource/i.test(error.message));
     });
 
     it('does wikipedia', async () => {
@@ -91,5 +92,100 @@ describe('Mercury', () => {
 
       assert.equal(result.next_page_url, `${url}2`);
     });
+  });
+
+  it('returns text content if text is passed as contentType', async () => {
+    const url =
+      'http://nymag.com/daily/intelligencer/2016/09/trump-discussed-usd25k-donation-with-florida-ag-not-fraud.html';
+    const html = fs.readFileSync(
+      './src/extractors/custom/nymag.com/fixtures/test.html',
+      'utf8'
+    );
+    const { content } = await Mercury.parse(url, { html, contentType: 'text' });
+
+    const htmlRe = /<[a-z][\s\S]*>/g;
+
+    assert.equal(htmlRe.test(content), false);
+  });
+
+  it('returns markdown if markdown is passed as contentType', async () => {
+    const url =
+      'http://nymag.com/daily/intelligencer/2016/09/trump-discussed-usd25k-donation-with-florida-ag-not-fraud.html';
+    const html = fs.readFileSync(
+      './src/extractors/custom/nymag.com/fixtures/test.html',
+      'utf8'
+    );
+    const { content } = await Mercury.parse(url, {
+      html,
+      contentType: 'markdown',
+    });
+
+    const htmlRe = /<[a-z][\s\S]*>/;
+    const markdownRe = /\[[\w\s]+\]\(.*\)/;
+
+    assert.equal(htmlRe.test(content), false);
+    assert.equal(markdownRe.test(content), true);
+  });
+
+  it('returns custom elements if an extend object is passed', async () => {
+    const url =
+      'http://nymag.com/daily/intelligencer/2016/09/trump-discussed-usd25k-donation-with-florida-ag-not-fraud.html';
+    const html = fs.readFileSync(
+      './src/extractors/custom/nymag.com/fixtures/test.html',
+      'utf8'
+    );
+    const { sites } = await Mercury.parse(url, {
+      html,
+      extend: {
+        sites: {
+          selectors: ['a.site-name'],
+          allowMultiple: true,
+        },
+      },
+    });
+    assert.ok(sites);
+    assert.equal(sites.length, 8);
+    assert.equal(sites[0], 'NYMag.com');
+  });
+
+  it('returns an array if a single element matches a custom extend', async () => {
+    const url =
+      'http://nymag.com/daily/intelligencer/2016/09/trump-discussed-usd25k-donation-with-florida-ag-not-fraud.html';
+    const html = fs.readFileSync(
+      './src/extractors/custom/nymag.com/fixtures/test.html',
+      'utf8'
+    );
+    const { sites } = await Mercury.parse(url, {
+      html,
+      extend: {
+        sites: {
+          selectors: [['li:first-child a.site-name', 'href']],
+          allowMultiple: true,
+        },
+      },
+    });
+    assert.ok(sites);
+    assert.equal(sites.length, 1);
+  });
+
+  it('returns custom attributes if an extend object is passed', async () => {
+    const url =
+      'http://nymag.com/daily/intelligencer/2016/09/trump-discussed-usd25k-donation-with-florida-ag-not-fraud.html';
+    const html = fs.readFileSync(
+      './src/extractors/custom/nymag.com/fixtures/test.html',
+      'utf8'
+    );
+    const { sites } = await Mercury.parse(url, {
+      html,
+      extend: {
+        sites: {
+          selectors: [['a.site-name', 'href']],
+          allowMultiple: true,
+        },
+      },
+    });
+    assert.ok(sites);
+    assert.equal(sites.length, 8);
+    assert.equal(sites[1], 'http://nymag.com/daily/intelligencer/');
   });
 });

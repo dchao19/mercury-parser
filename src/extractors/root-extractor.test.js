@@ -32,73 +32,6 @@ describe('RootExtractor', () => {
 
     assert.equal(url, null);
   });
-  it('returns text content if text is passed as contentType', () => {
-    const fullUrl =
-      'http://nymag.com/daily/intelligencer/2016/09/trump-discussed-usd25k-donation-with-florida-ag-not-fraud.html';
-    const html = fs.readFileSync(
-      './src/extractors/custom/nymag.com/fixtures/test.html',
-      'utf8'
-    );
-    const $ = cheerio.load(html);
-
-    const { content } = RootExtractor.extract(NYMagExtractor, {
-      url: fullUrl,
-      html,
-      $,
-      metaCache: [],
-      fallback: false,
-      contentType: 'text',
-    });
-
-    const htmlRe = /<[a-z][\s\S]*>/g;
-
-    assert.equal(htmlRe.test(content), false);
-  });
-  it('returns markdown if markdown is passed as contentType', () => {
-    const fullUrl =
-      'http://nymag.com/daily/intelligencer/2016/09/trump-discussed-usd25k-donation-with-florida-ag-not-fraud.html';
-    const html = fs.readFileSync(
-      './src/extractors/custom/nymag.com/fixtures/test.html',
-      'utf8'
-    );
-    const $ = cheerio.load(html);
-
-    const { content } = RootExtractor.extract(NYMagExtractor, {
-      url: fullUrl,
-      html,
-      $,
-      metaCache: [],
-      fallback: false,
-      contentType: 'markdown',
-    });
-
-    const htmlRe = /<[a-z][\s\S]*>/;
-    const markdownRe = /\[[\w\s]+\]\(.*\)/;
-
-    assert.equal(htmlRe.test(content), false);
-    assert.equal(markdownRe.test(content), true);
-  });
-  it('also can select type on Generic Extractor', () => {
-    const fullUrl =
-      'http://www.vulture.com/2016/08/dc-comics-greg-berlanti-c-v-r.html';
-
-    const html = fs.readFileSync('./fixtures/vulture.html', 'utf-8');
-    const $ = cheerio.load(html);
-    const { content } = RootExtractor.extract(undefined, {
-      url: fullUrl,
-      html,
-      $,
-      metaCache: [],
-      fallback: false,
-      contentType: 'markdown',
-    });
-
-    const htmlRe = /<[a-z][\s\S]*>/;
-    const markdownRe = /\[[\w\s]+\]\(.*\)/;
-
-    assert.equal(htmlRe.test(content), false);
-    assert.equal(markdownRe.test(content), true);
-  });
 });
 
 describe('cleanBySelectors($content, $, { clean })', () => {
@@ -294,5 +227,75 @@ describe('select(opts)', () => {
     const result = select(opts);
 
     assert.equal(result, null);
+  });
+
+  it('returns an array of results if allowMultiple is true', () => {
+    const html = `
+      <div><div><ul><li class="item">One</li><li class="item">Two</li></ul></div></div>
+      `;
+    const $ = cheerio.load(html);
+    const opts = {
+      type: 'items',
+      $,
+      extractionOpts: {
+        selectors: ['.item'],
+        allowMultiple: true,
+      },
+      extractHtml: true,
+    };
+
+    const result = select(opts);
+
+    assert.equal(result.length, 2);
+    assert.deepEqual(result, [
+      '<li class="item">One</li>',
+      '<li class="item">Two</li>',
+    ]);
+  });
+
+  it('makes links absolute in extended types when extracting HTML', () => {
+    const html = `
+      <div><p><a class="linky" href="/foo">Bar</a></p></div>
+    `;
+    const $ = cheerio.load(html);
+    const opts = {
+      type: 'links',
+      $,
+      url: 'http://example.com',
+      extractionOpts: {
+        selectors: ['.linky'],
+      },
+      extractHtml: true,
+    };
+
+    const result = select(opts);
+
+    assert.equal(
+      result,
+      '<div><a class="linky" href="http://example.com/foo">Bar</a></div>'
+    );
+  });
+
+  it('makes links absolute in extended types when extracting attrs', () => {
+    const html = `
+      <div><p><a class="linky" href="/foo">Bar</a><a class="linky" href="/bar">Baz</a></p></div>
+    `;
+    const $ = cheerio.load(html);
+    const opts = {
+      type: 'links',
+      $,
+      url: 'http://example.com',
+      extractionOpts: {
+        selectors: [['.linky', 'href']],
+        allowMultiple: true,
+      },
+    };
+
+    const result = select(opts);
+
+    assert.deepEqual(result, [
+      'http://example.com/foo',
+      'http://example.com/bar',
+    ]);
   });
 });

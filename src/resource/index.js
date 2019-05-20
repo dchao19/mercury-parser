@@ -12,7 +12,8 @@ const Resource = {
   // :param response: If set, use as the response rather than
   //                  attempting to fetch it ourselves. Expects a
   //                  string.
-  async create(url, preparedResponse, parsedUrl) {
+  // :param headers: Custom headers to be included in the request
+  async create(url, preparedResponse, parsedUrl, headers = {}) {
     let result;
 
     if (preparedResponse) {
@@ -27,7 +28,7 @@ const Resource = {
 
       result = { body: preparedResponse, response: validResponse };
     } else {
-      result = await fetchResource(url, parsedUrl);
+      result = await fetchResource(url, parsedUrl, headers);
     }
 
     if (result.error) {
@@ -39,7 +40,7 @@ const Resource = {
   },
 
   generateDoc({ body: content, response }) {
-    const { 'content-type': contentType } = response.headers;
+    const { 'content-type': contentType = '' } = response.headers;
 
     // TODO: Implement is_text function from
     // https://github.com/ReadabilityHoldings/readability/blob/8dc89613241d04741ebd42fa9fa7df1b1d746303/readability/utils/text.py#L57
@@ -66,11 +67,16 @@ const Resource = {
     let $ = cheerio.load(decodedContent);
 
     // after first cheerio.load, check to see if encoding matches
-    const metaContentType = $('meta[http-equiv=content-type]').attr('content');
+    const contentTypeSelector = cheerio.browser
+      ? 'meta[http-equiv=content-type]'
+      : 'meta[http-equiv=content-type i]';
+    const metaContentType =
+      $(contentTypeSelector).attr('content') ||
+      $('meta[charset]').attr('charset');
     const properEncoding = getEncoding(metaContentType);
 
     // if encodings in the header/body dont match, use the one in the body
-    if (properEncoding !== encoding) {
+    if (metaContentType && properEncoding !== encoding) {
       decodedContent = iconv.decode(content, properEncoding);
       $ = cheerio.load(decodedContent);
     }
